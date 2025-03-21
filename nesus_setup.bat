@@ -1,78 +1,78 @@
 @echo off
 echo ===============================================
-echo  [*] CÀI ĐẶT TÀI KHOẢN & CẤU HÌNH HỆ THỐNG CHO NESSUS
+echo  [*] SETTING UP CREDENTIALS & SYSTEM CONFIGURATION FOR NESSUS SCAN
 echo ===============================================
 echo.
 
-:: Định nghĩa mật khẩu (CÓ THỂ HARD-CODED HOẶC NHẬP TỪ NGƯỜI DÙNG)
-set PASSWORD=StrongPassword123!   :: Nếu muốn hardcode, chỉnh sửa giá trị tại đây.
+:: Define password (CAN BE HARD-CODED OR USER-INPUT)
+set PASSWORD=StrongPassword123!   :: Change this if you want to hardcode the password.
 
-:: Nếu mật khẩu chưa hardcoded, hỏi người dùng nhập vào
+:: If password is not hardcoded, prompt the user
 if "%PASSWORD%"=="ASK" (
-    set /p PASSWORD=Nhập mật khẩu cho tài khoản Nessus: 
+    set /p PASSWORD=Enter password for Nessus account: 
 )
 
-:: TẠO TÀI KHOẢN NESSUS
-echo [*] Đang tạo tài khoản Nessus...
+:: CREATE NESSUS ACCOUNT
+echo [*] Creating Nessus account...
 net user nessus_scan %PASSWORD% /add > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] Đã tạo tài khoản Nessus thành công.
+    echo [✓] Nessus account created successfully.
 ) else (
-    echo [!] Lỗi khi tạo tài khoản! Có thể tài khoản đã tồn tại.
+    echo [!] Error creating account! It may already exist.
 )
 echo.
 
-:: THÊM TÀI KHOẢN VÀO NHÓM ADMINISTRATORS
-echo [*] Đang thêm tài khoản vào nhóm Administrators...
+:: ADD ACCOUNT TO ADMINISTRATORS GROUP
+echo [*] Adding account to Administrators group...
 net localgroup Administrators nessus_scan /add > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] Đã thêm tài khoản vào nhóm Administrators.
+    echo [✓] Account added to Administrators group.
 ) else (
-    echo [!] Tài khoản có thể đã nằm trong nhóm Administrators.
+    echo [!] Account may already be in Administrators group.
 )
 echo.
 
-:: BẬT WINRM
-echo [*] Đang bật Windows Remote Management (WinRM)...
+:: ENABLE WINRM
+echo [*] Enabling Windows Remote Management (WinRM)...
 winrm quickconfig -q > nul 2>&1
 winrm set winrm/config/service @{AllowUnencrypted="true"} > nul 2>&1
 winrm set winrm/config/service/auth @{Basic="true"} > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] WinRM đã được cấu hình thành công.
+    echo [✓] WinRM configured successfully.
 ) else (
-    echo [!] WinRM có thể đã được bật trước đó.
+    echo [!] WinRM may have been enabled previously.
 )
 echo.
 
-:: MỞ CỔNG 445 (SMB) TRONG FIREWALL
-echo [*] Đang mở cổng 445 (SMB) trong firewall...
+:: ALLOW SMB (PORT 445) THROUGH FIREWALL
+echo [*] Allowing SMB (port 445) through firewall...
 netsh advfirewall firewall add rule name="Nessus SMB" dir=in action=allow protocol=TCP localport=445 > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] Đã mở cổng 445 thành công.
+    echo [✓] SMB port 445 opened successfully.
 ) else (
-    echo [!] Rule firewall có thể đã tồn tại.
+    echo [!] Firewall rule may already exist.
 )
 echo.
 
-:: KIỂM TRA LẠI TRẠNG THÁI CẤU HÌNH
+:: VERIFY CONFIGURATION STATUS
 echo ===============================================
-echo  [*] KIỂM TRA LẠI TRẠNG THÁI HỆ THỐNG
+echo  [*] VERIFYING SYSTEM CONFIGURATION
 echo ===============================================
 
 echo.
-echo [*] Danh sách tài khoản người dùng:
+echo [*] Listing user accounts:
 net user
 echo.
 
-echo [*] Trạng thái dịch vụ WinRM:
+echo [*] Checking WinRM service status:
 sc query WinRM | findstr "STATE"
 echo.
 
-echo [*] Kiểm tra rule firewall "Nessus SMB":
+echo [*] Checking firewall rule for Nessus SMB:
 netsh advfirewall firewall show rule name="Nessus SMB"
 echo.
 
 echo ===============================================
-echo  [✓] CẤU HÌNH HOÀN TẤT! HỆ THỐNG SẴN SÀNG CHO NESSUS SCAN.
+echo  [✓] SETUP COMPLETE! SYSTEM IS READY FOR NESSUS SCAN.
 echo ===============================================
 pause
