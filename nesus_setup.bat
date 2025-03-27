@@ -1,78 +1,95 @@
-@echo off
-echo ===============================================
-echo  Setting up credentials and system configuration for Nessus scan
-echo ===============================================
+cls
+@echo off 
+echo ****************************************************************************
+echo ** This batch file will automatically execute a series of commands that   **
+echo ** will allow a Nessus scan to carry out a credentialed vulnerability     **
+echo ** assessment against this machine. Please remember to run the Post-Scan  **
+echo ** the Post-Scan script once the audit has been completed.                **
+echo ****************************************************************************
+echo [!] Please ensure you run this script as Administrator.
 echo.
 
-:: Define password (can be hardcoded or user input)
-set PASSWORD=StrongPassword123
+SET runningpath=%~dp0
+SET PASSWORD="YOUR_PASSWORD"
+SET USERNAME="YOUR_USERNAME"
 
-:: If password is not hardcoded, prompt the user
-if "%PASSWORD%"=="ASK" (
-    set /p PASSWORD=Enter password for Nessus account: 
-)
-
-:: Create Nessus account
-echo Creating Nessus account...
-net user nessus_scan %PASSWORD% /add > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo Nessus account created successfully.
-) else (
-    echo Error creating account. It may already exist.
-)
-echo.
-
-:: Add account to Administrators group
-echo Adding account to Administrators group...
-net localgroup Administrators nessus_scan /add > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo Account added to Administrators group.
-) else (
-    echo Account may already be in Administrators group.
-)
-echo.
-
-:: Enable WinRM
-echo Enabling Windows Remote Management (WinRM)...
-winrm quickconfig -q > nul 2>&1
-winrm set winrm/config/service @{AllowUnencrypted="true"} > nul 2>&1
-winrm set winrm/config/service/auth @{Basic="true"} > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo WinRM configured successfully.
-) else (
-    echo WinRM may have been enabled previously.
-)
-echo.
-
-:: Allow SMB (Port 445) through firewall
-echo Allowing SMB port 445 through firewall...
-netsh advfirewall firewall add rule name="Nessus SMB" dir=in action=allow protocol=TCP localport=445 > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo SMB port 445 opened successfully.
-) else (
-    echo Firewall rule may already exist.
-)
-echo.
-
-:: Verify configuration status
-echo ===============================================
-echo  Verifying system configuration
-echo ===============================================
-
-echo.
-echo Listing user accounts:
-net user
-echo.
-
-echo Checking WinRM service status:
-sc query WinRM | findstr "STATE"
-echo.
-
-echo Checking firewall rule for Nessus SMB:
-netsh advfirewall firewall show rule name="Nessus SMB"
-echo.
-
-echo ===============================================
-echo  Setup complete. System is ready for Nessus scan.
-echo ===============================================
 pause
+echo.
+echo Saving Current System Settings..
+mkdir %runningpath%\Settings-Backup
+netsh advfirewall export "%runningpath%\Settings-Backup\firewall-rules-backup.wfw"
+REG save "HKLM\SYSTEM\CurrentControlSet\services\RemoteRegistry" "%runningpath%\Settings-Backup\Nessus-Original-Key-1.hiv"
+REG save "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Services\FileAndPrint" "%runningpath%\Settings-Backup\Nessus-Original-Key-2.hiv"
+echo (If the last command returned an error, please ignore it.)
+REG save "HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections" "%runningpath%\Settings-Backup\Nessus-Original-Key-3.hiv"
+REG save "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\system" "%runningpath%\Settings-Backup\Nessus-Original-Key-4.hiv"
+
+:: Save the current state of the WMI service
+sc query winmgmt > "%runningpath%\Settings-Backup\wmi_state.txt"
+findstr /C:"RUNNING" "%runningpath%\Settings-Backup\wmi_state.txt" >nul
+if %errorlevel% equ 0 (
+    set WMI_ORIGINAL_STATE=RUNNING
+) else (
+    set WMI_ORIGINAL_STATE=STOPPED
+)
+
+:: Save the current start type of the WMI service
+sc qc winmgmt | findstr /C:"DEMAND_START" >nul
+if %errorlevel% equ 0 (
+    set WMI_ORIGINAL_START_TYPE=DEMAND_START
+) else (
+    sc qc winmgmt | findstr /C:"AUTO_START" >nul
+    if %errorlevel% equ 0 (
+        set WMI_ORIGINAL_START_TYPE=AUTO_START
+    ) else (
+        set WMI_ORIGINAL_START_TYPE=UNKNOWN
+    )
+)
+
+:: Save the WMI state to a file for the Post-Scan script
+echo %WMI_ORIGINAL_STATE% > "%runningpath%\Settings-Backup\wmi_original_state.txt"
+echo %WMI_ORIGINAL_START_TYPE% >> "%runningpath%\Settings-Backup\wmi_original_state.txt"
+
+echo.
+echo [ATTENTION] Original system configuration saved. Do not delete the following folder:
+echo %runningpath%Settings-Backup\
+echo.
+
+:: Configuration Changes:
+
+echo [-] Creating user '%USERNAME%'...
+net user %USERNAME% %PASSWORD% /add /active:yes /Y
+
+echo [-] Adding '%USERNAME%' to the Administrators group...
+net localgroup Administrators %USERNAME% /add
+
+echo [-] Enabling File and Printer Sharing
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+
+:: Registry changes:
+
+echo [-] Starting Remote Registry
+REG add "HKLM\SYSTEM\CurrentControlSet\services\RemoteRegistry" /v Start /t REG_DWORD /d 2 /f
+
+echo [-] Setting registry key for File and Printer services 
+REG add "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Services\FileAndPrint" /v Enabled /t REG_DWORD /d 1 /f
+
+echo [-] Setting registry key for Remote and Local access
+REG add "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Services\FileAndPrint" /v RemoteAddresses /t REG_SZ /d "localsubnet" /f
+
+echo [-] Disabling Internet Connection Firewall for LAN or VPN connections
+REG add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections" /v NC_PersonalFirewallConfig /t REG_DWORD /d 1 /f
+
+echo [-] Disabling UAC (User Account Control)
+REG add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\system" /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f
+
+:: Enable and start the WMI service
+echo [-] Enabling and starting the WMI service...
+sc config winmgmt start= auto
+sc start winmgmt
+
+echo.
+echo [DONE] All commmands successfully completed.
+echo You can now close this window and run Nessus.
+echo.
+Pause
