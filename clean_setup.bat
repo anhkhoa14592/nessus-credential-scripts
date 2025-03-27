@@ -1,72 +1,56 @@
-@echo off
-echo ===============================================
-echo  [*] RESTORING SYSTEM CONFIGURATION TO DEFAULT
-echo ===============================================
+@echo off 
+echo ******************************************************************************
+echo ** This batch file will automatically remove all changes and settings       **
+echo ** made to this computer for the purposes of the Nessus authenticated scan. **
+echo ** The script must be run from the same location as the Nessus-Pre-Scan.bat **
+echo ******************************************************************************
+echo [!] Please ensure you run this script as Administrator.
 echo.
-
-:: REMOVE ACCOUNT FROM ADMINISTRATORS GROUP
-echo [*] Removing Nessus account from Administrators group (if exists)...
-net localgroup Administrators nessus_scan /delete > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo [*] Nessus account removed from Administrators group.
-) else (
-    echo [!] Nessus account was not in Administrators group.
-)
-echo.
-
-:: REMOVE NESSUS ACCOUNT
-echo [*] Deleting Nessus account...
-net user nessus_scan /delete > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo [*] Nessus account deleted successfully.
-) else (
-    echo [!] Nessus account may not exist.
-)
-echo.
-
-:: DISABLE AND STOP WINRM SERVICE
-echo [*] Disabling and stopping WinRM service...
-winrm delete winrm/config/listener?Address=*+Transport=HTTP > nul 2>&1
-sc config WinRM start= disabled > nul 2>&1
-net stop WinRM > nul 2>&1
-winrm set winrm/config/service/auth @{Basic="false"} > nul 2>&1
-winrm set winrm/config/service @{AllowUnencrypted="false"} > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo [*] WinRM disabled successfully.
-) else (
-    echo [!] WinRM may already be disabled.
-)
-echo.
-
-:: REMOVE SMB FIREWALL RULE
-echo [*] Removing firewall rule for Nessus SMB...
-netsh advfirewall firewall delete rule name="Nessus SMB" > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo [*] Firewall rule removed successfully.
-) else (
-    echo [!] Firewall rule may not exist.
-)
-echo.
-
-:: VERIFY SYSTEM STATUS AFTER CLEANUP
-echo ===============================================
-echo  [*] VERIFYING SYSTEM AFTER CLEANUP
-echo ===============================================
-
-echo.
-echo [*] Listing remaining user accounts:
-net user
-echo.
-
-echo [*] Checking WinRM service status:
-sc query WinRM | findstr "STATE"
-echo.
-
-echo [*] Checking if Nessus SMB firewall rule still exists:
-netsh advfirewall firewall show rule name="Nessus SMB"
-echo.
-
-echo ===============================================
-echo  [*] SYSTEM RESTORED TO DEFAULT SETTINGS.
-echo ===============================================
+SET runningpath=%~dp0
+SET USERNAME="YOUR_USERNAME"
 pause
+echo.
+echo Restoring original Firewall settings..
+netsh advfirewall import "%runningpath%\Settings-Backup\firewall-rules-backup.wfw"
+
+echo Restoring original Remote Registry settings..
+REG restore "HKLM\SYSTEM\CurrentControlSet\services\RemoteRegistry" "%runningpath%\Settings-Backup\Nessus-Original-Key-1.hiv"
+
+echo Restoring setting registry key for File and Printer services..
+REG restore "HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Services\FileAndPrint" "%runningpath%\Settings-Backup\Nessus-Original-Key-2.hiv"
+echo (If the last command returned an error, please ignore it.)
+
+echo Restoring original Internet Connection Firewall for LAN or VPN connections settings..
+REG restore "HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections" "%runningpath%\Settings-Backup\Nessus-Original-Key-3.hiv"
+
+echo Restoring original UAC (User Account Control) settings..
+REG restore "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\system" "%runningpath%\Settings-Backup\Nessus-Original-Key-4.hiv"
+
+echo Removing '%USERNAME%' from the Administrators group...
+net localgroup Administrators %USERNAME% /delete
+
+echo Deleting user '%USERNAME%'...
+net user %USERNAME% /delete
+
+:: Restore the WMI service to its original state
+echo Restoring original WMI service state...
+for /f "tokens=1,2" %%a in ("%runningpath%\Settings-Backup\wmi_original_state.txt") do (
+    set WMI_ORIGINAL_STATE=%%a
+    set WMI_ORIGINAL_START_TYPE=%%b
+)
+
+if "%WMI_ORIGINAL_STATE%"=="STOPPED" (
+    sc stop winmgmt
+)
+
+if "%WMI_ORIGINAL_START_TYPE%"=="DEMAND_START" (
+    sc config winmgmt start= demand
+) else if "%WMI_ORIGINAL_START_TYPE%"=="AUTO_START" (
+    sc config winmgmt start= auto
+)
+
+echo.
+echo All commmands successfully completed. Original configuration restored.
+echo You can now delete the scripts and backup folder.
+echo.
+Pause
