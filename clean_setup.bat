@@ -4,23 +4,23 @@ echo  [*] RESTORING SYSTEM CONFIGURATION TO DEFAULT
 echo ===============================================
 echo.
 
-:: REMOVE NESSUS ACCOUNT
-echo [*] Deleting Nessus account...
-net user nessus_scan /delete > nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo [✓] Nessus account deleted successfully.
-) else (
-    echo [!] Nessus account may not exist.
-)
-echo.
-
 :: REMOVE ACCOUNT FROM ADMINISTRATORS GROUP
 echo [*] Removing Nessus account from Administrators group (if exists)...
 net localgroup Administrators nessus_scan /delete > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] Nessus account removed from Administrators group.
+    echo [*] Nessus account removed from Administrators group.
 ) else (
     echo [!] Nessus account was not in Administrators group.
+)
+echo.
+
+:: REMOVE NESSUS ACCOUNT
+echo [*] Deleting Nessus account...
+net user nessus_scan /delete > nul 2>&1
+if %ERRORLEVEL%==0 (
+    echo [*] Nessus account deleted successfully.
+) else (
+    echo [!] Nessus account may not exist.
 )
 echo.
 
@@ -32,7 +32,7 @@ net stop WinRM > nul 2>&1
 winrm set winrm/config/service/auth @{Basic="false"} > nul 2>&1
 winrm set winrm/config/service @{AllowUnencrypted="false"} > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] WinRM disabled successfully.
+    echo [*] WinRM disabled successfully.
 ) else (
     echo [!] WinRM may already be disabled.
 )
@@ -42,7 +42,7 @@ echo.
 echo [*] Removing firewall rule for Nessus SMB...
 netsh advfirewall firewall delete rule name="Nessus SMB" > nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [✓] Firewall rule removed successfully.
+    echo [*] Firewall rule removed successfully.
 ) else (
     echo [!] Firewall rule may not exist.
 )
@@ -67,6 +67,6 @@ netsh advfirewall firewall show rule name="Nessus SMB"
 echo.
 
 echo ===============================================
-echo  [✓] SYSTEM RESTORED TO DEFAULT SETTINGS.
+echo  [*] SYSTEM RESTORED TO DEFAULT SETTINGS.
 echo ===============================================
 pause
